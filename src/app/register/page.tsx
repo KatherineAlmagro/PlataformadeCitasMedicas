@@ -218,6 +218,41 @@ export default function RegisterPage() {
               )}
             </Button>
           </form>
+
+          {/* ACCESO RÁPIDO DEMO */}
+          <div className="mt-6 pt-4 border-t">
+            <p className="text-xs text-center font-medium text-muted-foreground mb-3">
+              ⚡ Acceso Rápido de Prueba (1 Clic)
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  document.cookie = `user_role=patient; path=/; max-age=604800; SameSite=Lax`;
+                  document.cookie = `session_role=patient; path=/; max-age=604800; SameSite=Lax`;
+                  router.push('/paciente');
+                }}
+                className="text-xs"
+              >
+                <User className="mr-1.5 h-3.5 w-3.5 text-primary" /> Como Paciente
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                type="button"
+                onClick={() => {
+                  document.cookie = `user_role=doctor; path=/; max-age=604800; SameSite=Lax`;
+                  document.cookie = `session_role=doctor; path=/; max-age=604800; SameSite=Lax`;
+                  router.push('/doctor');
+                }}
+                className="text-xs"
+              >
+                <Stethoscope className="mr-1.5 h-3.5 w-3.5 text-primary" /> Como Doctor
+              </Button>
+            </div>
+          </div>
         </CardContent>
 
         <CardFooter className="flex flex-col gap-2 justify-center border-t py-4 text-xs text-muted-foreground text-center">

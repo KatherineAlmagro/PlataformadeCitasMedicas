@@ -34,7 +34,7 @@ export default async function Home() {
               <Link href="/login">Iniciar Sesión</Link>
             </Button>
             <Button asChild>
-              <Link href="/login">Registrarse</Link>
+              <Link href="/register">Registrarse</Link>
             </Button>
           </div>
         </div>

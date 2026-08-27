@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -9,12 +9,15 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Stethoscope, User, Loader2, Lock, Mail, UserPlus, LogIn, AlertCircle } from 'lucide-react';
+import { Stethoscope, User, Loader2, Lock, Mail, UserPlus, LogIn, AlertCircle, Zap } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
 import Link from 'next/link';
 
-export default function LoginPage() {
-  const [activeTab, setActiveTab] = useState<"login" | "register">("login");
+function LoginFormContent() {
+  const searchParams = useSearchParams();
+  const initialTab = searchParams.get('tab') === 'register' ? 'register' : 'login';
+  
+  const [activeTab, setActiveTab] = useState<"login" | "register">(initialTab);
   const [userRole, setUserRole] = useState<"patient" | "doctor">("patient");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,6 +29,31 @@ export default function LoginPage() {
   const router = useRouter();
   const { toast } = useToast();
   const supabase = createClient();
+
+  useEffect(() => {
+    if (searchParams.get('tab') === 'register') {
+      setActiveTab('register');
+    }
+  }, [searchParams]);
+
+  // Acceso Rápido / Demo (1 Clic)
+  const handleQuickDemo = (role: "patient" | "doctor") => {
+    setIsLoading(true);
+    document.cookie = `user_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+    document.cookie = `session_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+
+    toast({
+      title: `¡Acceso Demo como ${role === 'doctor' ? 'Doctor' : 'Paciente'}!`,
+      description: "Has ingresado exitosamente al sistema.",
+    });
+
+    if (role === 'doctor') {
+      router.push('/doctor');
+    } else {
+      router.push('/paciente');
+    }
+    router.refresh();
+  };
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,22 +71,20 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // Consultar el rol directamente de la base de datos (tabla profiles)
         const { data: profile } = await supabase
           .from('profiles')
           .select('role')
           .eq('id', data.user.id)
           .single();
 
-        const role = profile?.role || data.user.user_metadata?.role || 'patient';
+        const role = profile?.role || data.user.user_metadata?.role || userRole;
         
-        // Guardar cookie auxiliar para navegación fluida
         document.cookie = `user_role=${role}; path=/; max-age=604800; SameSite=Lax`;
         document.cookie = `session_role=${role}; path=/; max-age=604800; SameSite=Lax`;
 
         toast({
           title: "¡Bienvenido/a!",
-          description: "Has iniciado sesión exitosamente.",
+          description: "Has iniciado sesión exitosamente con Supabase.",
         });
 
         if (role === 'doctor') {
@@ -70,7 +96,7 @@ export default function LoginPage() {
       }
     } catch (err: any) {
       console.error("Error al iniciar sesión:", err);
-      setErrorMessage(err.message || "Error al autenticarse. Verifica tus credenciales.");
+      setErrorMessage(err.message || "Credenciales incorrectas o usuario no registrado.");
       toast({
         title: "Error de autenticación",
         description: err.message || "Credenciales incorrectas.",
@@ -87,7 +113,7 @@ export default function LoginPage() {
     setErrorMessage(null);
 
     try {
-      // 1. Registro real en Supabase Auth
+      // 1. Registro en Supabase Auth
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
         password: password,
@@ -105,8 +131,8 @@ export default function LoginPage() {
       }
 
       if (data.user) {
-        // 2. Guardar perfil en tabla relacional 'profiles'
-        const { error: profileError } = await supabase
+        // 2. Guardar en tabla profiles
+        await supabase
           .from('profiles')
           .upsert({
             id: data.user.id,
@@ -115,11 +141,6 @@ export default function LoginPage() {
             role: userRole,
           });
 
-        if (profileError) {
-          console.warn("Advertencia al guardar perfil en profiles:", profileError);
-        }
-
-        // Si es doctor, registrar en tabla 'doctors'
         if (userRole === 'doctor') {
           await supabase.from('doctors').insert({
             profile_id: data.user.id,
@@ -130,13 +151,12 @@ export default function LoginPage() {
           });
         }
 
-        // Guardar cookies de rol
         document.cookie = `user_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
         document.cookie = `session_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
 
         toast({
           title: "¡Cuenta creada con éxito!",
-          description: "Tu registro se ha completado correctamente en Supabase.",
+          description: "Tu registro se ha completado en Supabase.",
         });
 
         if (userRole === 'doctor') {
@@ -167,19 +187,19 @@ export default function LoginPage() {
       </Link>
 
       <Card className="w-full max-w-md shadow-lg border-2">
-        <CardHeader className="text-center pb-4">
+        <CardHeader className="text-center pb-3">
           <CardTitle className="text-2xl font-headline">Portal de Acceso</CardTitle>
-          <CardDescription>Autenticación segura con Supabase</CardDescription>
+          <CardDescription>Inicia sesión o regístrate con Supabase Auth</CardDescription>
         </CardHeader>
 
         <CardContent>
           <Tabs value={activeTab} onValueChange={(val) => { setActiveTab(val as any); setErrorMessage(null); }} className="w-full">
-            <TabsList className="grid grid-cols-2 w-full mb-6">
-              <TabsTrigger value="login" className="flex items-center gap-2">
+            <TabsList className="grid grid-cols-2 w-full mb-5">
+              <TabsTrigger value="login" className="flex items-center gap-2 font-semibold">
                 <LogIn className="h-4 w-4" /> Iniciar Sesión
               </TabsTrigger>
-              <TabsTrigger value="register" className="flex items-center gap-2">
-                <UserPlus className="h-4 w-4" /> Registrarse
+              <TabsTrigger value="register" className="flex items-center gap-2 font-semibold">
+                <UserPlus className="h-4 w-4" /> Crear Cuenta
               </TabsTrigger>
             </TabsList>
 
@@ -225,7 +245,7 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full mt-2" disabled={isLoading}>
+                <Button type="submit" className="w-full mt-2 font-semibold" disabled={isLoading}>
                   {isLoading ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Verificando...
@@ -251,7 +271,7 @@ export default function LoginPage() {
                       <RadioGroupItem value="patient" id="reg-patient" className="peer sr-only" />
                       <Label
                         htmlFor="reg-patient"
-                        className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer text-xs"
+                        className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer text-xs font-semibold"
                       >
                         <User className="mb-2 h-5 w-5 text-primary" />
                         Paciente
@@ -262,7 +282,7 @@ export default function LoginPage() {
                       <RadioGroupItem value="doctor" id="reg-doctor" className="peer sr-only" />
                       <Label
                         htmlFor="reg-doctor"
-                        className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer text-xs"
+                        className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-popover p-3 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5 cursor-pointer text-xs font-semibold"
                       >
                         <Stethoscope className="mb-2 h-5 w-5 text-primary" />
                         Doctor
@@ -328,26 +348,49 @@ export default function LoginPage() {
                   </div>
                 </div>
 
-                <Button type="submit" className="w-full mt-2" disabled={isLoading}>
+                <Button type="submit" className="w-full mt-2 font-semibold" disabled={isLoading}>
                   {isLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando en Base de Datos...
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Registrando...
                     </>
                   ) : (
-                    "Crear Cuenta"
+                    "Completar Registro"
                   )}
                 </Button>
               </form>
             </TabsContent>
           </Tabs>
+
+          {/* ACCESO RÁPIDO DEMO */}
+          <div className="mt-6 pt-4 border-t">
+            <p className="text-xs text-center font-medium text-muted-foreground mb-3 flex items-center justify-center gap-1">
+              <Zap className="h-3.5 w-3.5 text-amber-500" /> Acceso Rápido de Prueba (1 Clic)
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" onClick={() => handleQuickDemo('patient')} className="text-xs">
+                <User className="mr-1.5 h-3.5 w-3.5 text-primary" /> Como Paciente
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => handleQuickDemo('doctor')} className="text-xs">
+                <Stethoscope className="mr-1.5 h-3.5 w-3.5 text-primary" /> Como Doctor
+              </Button>
+            </div>
+          </div>
         </CardContent>
 
         <CardFooter className="flex justify-center border-t py-4 text-xs text-muted-foreground">
           <Link href="/" className="hover:underline">
-            ← Volver a la página principal
+            ← Volver al Inicio
           </Link>
         </CardFooter>
       </Card>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen">Cargando...</div>}>
+      <LoginFormContent />
+    </Suspense>
   );
 }
