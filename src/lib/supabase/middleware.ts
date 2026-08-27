@@ -33,12 +33,13 @@ export async function updateSession(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const { pathname } = request.nextUrl;
+  const isDashboardRoute = pathname.startsWith('/dashboard');
   const isPatientRoute = pathname.startsWith('/paciente');
   const isDoctorRoute = pathname.startsWith('/doctor');
-  const isLoginRoute = pathname === '/login';
+  const isLoginRoute = pathname === '/login' || pathname === '/register';
 
   // Si no está autenticado e intenta acceder a una ruta protegida
-  if ((isPatientRoute || isDoctorRoute) && !user) {
+  if ((isDashboardRoute || isPatientRoute || isDoctorRoute) && !user) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', pathname);
