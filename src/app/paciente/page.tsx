@@ -108,12 +108,17 @@ function LoadingSkeleton() {
   );
 }
 
+function isValidUUID(str?: string): boolean {
+  if (!str) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(str);
+}
+
 export default function PatientPage() {
   const [doctors, setDoctors] = useState<Doctor[]>([]);
   const [appointmentSlots, setAppointmentSlots] = useState<AppointmentSlot[]>([]);
   const [bookedAppointments, setBookedAppointments] = useState<BookedAppointment[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [userId, setUserId] = useState<string>("patient123");
+  const [userId, setUserId] = useState<string>("00000000-0000-0000-0000-000000000000");
   const [userName, setUserName] = useState<string>("");
 
   const supabase = createClient();
@@ -122,27 +127,23 @@ export default function PatientPage() {
     async function loadPatientData() {
       setIsLoading(true);
       try {
-        // 1. Obtener usuario autenticado real o cookie
         const { data: { user } } = await supabase.auth.getUser();
-        let currentUserId = "patient123";
+        let currentUserId = user?.id || "00000000-0000-0000-0000-000000000000";
         let resolvedName = "";
 
-        // Leer cookie auxiliar
         if (typeof document !== 'undefined') {
           const matchName = document.cookie.match(/(^| )user_name=([^;]+)/);
           if (matchName) resolvedName = decodeURIComponent(matchName[2]);
         }
         
         if (user) {
-          currentUserId = user.id;
           setUserId(user.id);
           resolvedName = user.user_metadata?.full_name || resolvedName || user.email?.split('@')[0] || "Paciente";
         }
 
         setUserName(resolvedName || "Paciente Registrado");
 
-        // 2. Cargar doctores de Supabase
-        const { data: doctorsData, error: docError } = await supabase
+        const { data: doctorsData } = await supabase
           .from('doctors')
           .select('*');
 
@@ -157,7 +158,6 @@ export default function PatientPage() {
             icon: d.icon || 'Stethoscope',
           }));
         } else {
-          // Si la tabla está vacía, insertar datos iniciales en Supabase
           const { data: inserted } = await supabase.from('doctors').insert(
             initialDoctors.map(d => ({
               name: d.name,
@@ -179,12 +179,10 @@ export default function PatientPage() {
         }
         setDoctors(loadedDoctors);
 
-        // 3. Cargar slots de horarios disponibles
         const { data: slotsData } = await supabase
           .from('appointment_slots')
           .select('*')
-          .eq('is_booked', false)
-          .gte('slot_date', new Date().toISOString());
+          .eq('is_booked', false);
 
         if (slotsData && slotsData.length > 0) {
           setAppointmentSlots(slotsData.map((s: any) => ({
@@ -192,13 +190,23 @@ export default function PatientPage() {
             date: new Date(s.slot_date),
             doctorId: s.doctor_id,
           })));
-        } else if (loadedDoctors.length > 0) {
-          // Generar horarios de muestra si no hay
-          const sampleSlots = [
-            { doctor_id: loadedDoctors[0].id, slot_date: new Date(Date.now() + 86400000).toISOString(), is_booked: false },
-            { doctor_id: loadedDoctors[0].id, slot_date: new Date(Date.now() + 90000000).toISOString(), is_booked: false },
-            { doctor_id: loadedDoctors[1]?.id || loadedDoctors[0].id, slot_date: new Date(Date.now() + 172800000).toISOString(), is_booked: false },
-          ];
+        } else {
+          const now = new Date();
+          const sampleSlots: any[] = [];
+          
+          loadedDoctors.forEach(doc => {
+            for (let i = 1; i <= 3; i++) {
+              const d = new Date(now);
+              d.setDate(now.getDate() + i);
+              d.setHours(9 + (i * 2), 0, 0, 0);
+              sampleSlots.push({
+                doctor_id: doc.id,
+                slot_date: d.toISOString(),
+                is_booked: false,
+              });
+            }
+          });
+
           const { data: createdSlots } = await supabase.from('appointment_slots').insert(sampleSlots).select();
           if (createdSlots) {
             setAppointmentSlots(createdSlots.map((s: any) => ({
@@ -209,44 +217,46 @@ export default function PatientPage() {
           }
         }
 
-        // 4. Cargar citas del paciente
-        if (currentUserId) {
-          const { data: appointmentsData } = await supabase
-            .from('appointments')
-            .select(`
+        let appointmentsQuery = supabase
+          .from('appointments')
+          .select(`
+            id,
+            appointment_date,
+            status,
+            doctor_id,
+            doctors (
               id,
-              appointment_date,
-              status,
-              doctor_id,
-              doctors (
-                id,
-                name,
-                specialty,
-                avatar_url,
-                icon
-              )
-            `)
-            .eq('patient_id', currentUserId);
+              name,
+              specialty,
+              avatar_url,
+              icon
+            )
+          `);
 
-          if (appointmentsData) {
-            const formatted: BookedAppointment[] = appointmentsData.map((app: any) => {
-              const docInfo = Array.isArray(app.doctors) ? app.doctors[0] : app.doctors;
-              return {
-                id: app.id,
-                date: new Date(app.appointment_date),
-                doctorId: app.doctor_id,
-                doctor: {
-                  id: docInfo?.id || app.doctor_id,
-                  name: docInfo?.name || 'Doctor',
-                  specialty: docInfo?.specialty || 'Especialista',
-                  avatarUrl: docInfo?.avatar_url || 'https://images.pexels.com/photos/5452298/pexels-photo-5452298.jpeg',
-                  icon: docInfo?.icon || 'Stethoscope',
-                },
-                status: app.status,
-              };
-            });
-            setBookedAppointments(formatted);
-          }
+        if (isValidUUID(currentUserId)) {
+          appointmentsQuery = appointmentsQuery.eq('patient_id', currentUserId);
+        }
+
+        const { data: appointmentsData } = await appointmentsQuery.order('appointment_date', { ascending: true });
+
+        if (appointmentsData) {
+          const formatted: BookedAppointment[] = appointmentsData.map((app: any) => {
+            const docInfo = Array.isArray(app.doctors) ? app.doctors[0] : app.doctors;
+            return {
+              id: app.id,
+              date: new Date(app.appointment_date),
+              doctorId: app.doctor_id,
+              doctor: {
+                id: docInfo?.id || app.doctor_id,
+                name: docInfo?.name || 'Doctor',
+                specialty: docInfo?.specialty || 'Especialista',
+                avatarUrl: docInfo?.avatar_url || 'https://images.pexels.com/photos/5452298/pexels-photo-5452298.jpeg',
+                icon: docInfo?.icon || 'Stethoscope',
+              },
+              status: app.status,
+            };
+          });
+          setBookedAppointments(formatted);
         }
       } catch (err) {
         console.error("Error al cargar datos en paciente:", err);
@@ -259,47 +269,48 @@ export default function PatientPage() {
   }, []);
 
   const handleAppointmentBooked = (slotId: string) => {
-    // Actualizar el estado local para quitar el slot reservado
     setAppointmentSlots(prev => prev.filter(slot => slot.id !== slotId));
-    // Recargar citas
-    if (userId) {
-      supabase
-        .from('appointments')
-        .select(`
+    
+    let appointmentsQuery = supabase
+      .from('appointments')
+      .select(`
+        id,
+        appointment_date,
+        status,
+        doctor_id,
+        doctors (
           id,
-          appointment_date,
-          status,
-          doctor_id,
-          doctors (
-            id,
-            name,
-            specialty,
-            avatar_url,
-            icon
-          )
-        `)
-        .eq('patient_id', userId)
-        .then(({ data }) => {
-          if (data) {
-            setBookedAppointments(data.map((app: any) => {
-              const docInfo = Array.isArray(app.doctors) ? app.doctors[0] : app.doctors;
-              return {
-                id: app.id,
-                date: new Date(app.appointment_date),
-                doctorId: app.doctor_id,
-                doctor: {
-                  id: docInfo?.id || app.doctor_id,
-                  name: docInfo?.name || 'Doctor',
-                  specialty: docInfo?.specialty || 'Especialista',
-                  avatarUrl: docInfo?.avatar_url || '',
-                  icon: docInfo?.icon || 'Stethoscope',
-                },
-                status: app.status,
-              };
-            }));
-          }
-        });
+          name,
+          specialty,
+          avatar_url,
+          icon
+        )
+      `);
+
+    if (isValidUUID(userId)) {
+      appointmentsQuery = appointmentsQuery.eq('patient_id', userId);
     }
+
+    appointmentsQuery.order('appointment_date', { ascending: true }).then(({ data }) => {
+      if (data) {
+        setBookedAppointments(data.map((app: any) => {
+          const docInfo = Array.isArray(app.doctors) ? app.doctors[0] : app.doctors;
+          return {
+            id: app.id,
+            date: new Date(app.appointment_date),
+            doctorId: app.doctor_id,
+            doctor: {
+              id: docInfo?.id || app.doctor_id,
+              name: docInfo?.name || 'Doctor',
+              specialty: docInfo?.specialty || 'Especialista',
+              avatarUrl: docInfo?.avatar_url || '',
+              icon: docInfo?.icon || 'Stethoscope',
+            },
+            status: app.status,
+          };
+        }));
+      }
+    });
   };
 
   return (

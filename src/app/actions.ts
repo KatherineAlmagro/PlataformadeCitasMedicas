@@ -14,7 +14,7 @@ export async function handleAppointmentRequest(
 
     // 1. Insertar la cita en la tabla 'appointments'
     const { error: insertError } = await supabase.from('appointments').insert({
-      patient_id: patientId && patientId !== 'patient123' ? patientId : null,
+      patient_id: patientId && patientId !== '00000000-0000-0000-0000-000000000000' ? patientId : null,
       doctor_id: doctor.id,
       slot_id: slotId || null,
       patient_name: formData.patientName,
