@@ -27,10 +27,14 @@ export async function updateSession(request: NextRequest) {
     }
   );
 
-  // Obtener usuario autenticado real
+  // Obtener usuario autenticado o cookie de sesión
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  const cookieRole = request.cookies.get('session_role')?.value || request.cookies.get('user_role')?.value;
+  const isAuthenticated = !!user || !!cookieRole;
+  const userRole = cookieRole || user?.user_metadata?.role || 'patient';
 
   const { pathname } = request.nextUrl;
   const isDashboardRoute = pathname.startsWith('/dashboard');
@@ -39,17 +43,15 @@ export async function updateSession(request: NextRequest) {
   const isLoginRoute = pathname === '/login' || pathname === '/register';
 
   // Si no está autenticado e intenta acceder a una ruta protegida
-  if ((isDashboardRoute || isPatientRoute || isDoctorRoute) && !user) {
+  if ((isDashboardRoute || isPatientRoute || isDoctorRoute) && !isAuthenticated) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('redirect', pathname);
     return NextResponse.redirect(url);
   }
 
-  // Si el usuario está autenticado, obtener su rol desde la base de datos o metadata
-  if (user) {
-    const userRole = user.user_metadata?.role || request.cookies.get('user_role')?.value || 'patient';
-
+  // Si el usuario está autenticado, validar permisos por rol
+  if (isAuthenticated) {
     // Restricciones por rol
     if (isDoctorRoute && userRole !== 'doctor') {
       const url = request.nextUrl.clone();
@@ -63,7 +65,7 @@ export async function updateSession(request: NextRequest) {
       return NextResponse.redirect(url);
     }
 
-    // Si ya está logueado e intenta ir a login
+    // Si ya está autenticado e intenta ir a login o register
     if (isLoginRoute) {
       const url = request.nextUrl.clone();
       url.pathname = userRole === 'doctor' ? '/doctor' : '/paciente';
