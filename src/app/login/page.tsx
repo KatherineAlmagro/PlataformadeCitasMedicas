@@ -39,12 +39,17 @@ function LoginFormContent() {
   // Acceso Rápido / Demo (1 Clic)
   const handleQuickDemo = (role: "patient" | "doctor") => {
     setIsLoading(true);
+    const demoName = role === 'doctor' ? 'Dra. María Almagro' : 'Katherine Almagro';
+    const demoEmail = role === 'doctor' ? 'doctor@medischedule.com' : 'paciente@medischedule.com';
+
     document.cookie = `user_role=${role}; path=/; max-age=604800; SameSite=Lax`;
     document.cookie = `session_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+    document.cookie = `user_name=${encodeURIComponent(demoName)}; path=/; max-age=604800; SameSite=Lax`;
+    document.cookie = `user_email=${encodeURIComponent(demoEmail)}; path=/; max-age=604800; SameSite=Lax`;
 
     toast({
-      title: `¡Acceso Demo como ${role === 'doctor' ? 'Doctor' : 'Paciente'}!`,
-      description: "Has ingresado exitosamente al sistema.",
+      title: `¡Acceso como ${demoName}!`,
+      description: `Iniciaste sesión con el rol de ${role === 'doctor' ? 'Doctor' : 'Paciente'}.`,
     });
 
     window.location.href = role === 'doctor' ? '/doctor' : '/paciente';
@@ -56,6 +61,7 @@ function LoginFormContent() {
     setErrorMessage(null);
 
     const targetEmail = email.trim();
+    let finalName = targetEmail.split('@')[0];
 
     try {
       // 1. Intentar inicio de sesión en Supabase
@@ -69,40 +75,44 @@ function LoginFormContent() {
       if (data?.user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('*')
           .eq('id', data.user.id)
           .single();
 
         role = (profile?.role as any) || data.user.user_metadata?.role || userRole;
-      } else if (error) {
-        console.warn("Aviso de Supabase Auth:", error.message);
-        // Si Supabase pide confirmación de correo o error de proveedor, buscar en profiles
+        finalName = profile?.full_name || data.user.user_metadata?.full_name || finalName;
+      } else {
+        // Buscar perfil por email
         const { data: profile } = await supabase
           .from('profiles')
-          .select('role')
+          .select('*')
           .eq('email', targetEmail)
           .single();
 
         if (profile?.role) {
           role = profile.role as any;
+          finalName = profile.full_name || finalName;
         }
       }
 
-      // Establecer cookies de sesión
+      // Establecer cookies de sesión con nombre de usuario
       document.cookie = `user_role=${role}; path=/; max-age=604800; SameSite=Lax`;
       document.cookie = `session_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_name=${encodeURIComponent(finalName)}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_email=${encodeURIComponent(targetEmail)}; path=/; max-age=604800; SameSite=Lax`;
 
       toast({
-        title: "¡Bienvenido/a!",
+        title: `¡Bienvenido/a, ${finalName}!`,
         description: "Has iniciado sesión exitosamente.",
       });
 
       window.location.href = role === 'doctor' ? '/doctor' : '/paciente';
     } catch (err: any) {
       console.error("Error al iniciar sesión:", err);
-      // Permitir acceso fallback
       document.cookie = `user_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
       document.cookie = `session_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_name=${encodeURIComponent(finalName)}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_email=${encodeURIComponent(targetEmail)}; path=/; max-age=604800; SameSite=Lax`;
       window.location.href = userRole === 'doctor' ? '/doctor' : '/paciente';
     } finally {
       setIsLoading(false);
@@ -118,7 +128,6 @@ function LoginFormContent() {
     const targetName = fullName.trim() || targetEmail.split('@')[0];
 
     try {
-      // 1. Registro en Supabase Auth
       const { data, error } = await supabase.auth.signUp({
         email: targetEmail,
         password: password,
@@ -131,7 +140,6 @@ function LoginFormContent() {
         },
       });
 
-      // 2. Guardar en tabla profiles de Supabase
       if (data?.user?.id) {
         await supabase
           .from('profiles')
@@ -155,18 +163,21 @@ function LoginFormContent() {
 
       document.cookie = `user_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
       document.cookie = `session_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_name=${encodeURIComponent(targetName)}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_email=${encodeURIComponent(targetEmail)}; path=/; max-age=604800; SameSite=Lax`;
 
       toast({
         title: "¡Cuenta creada con éxito!",
-        description: "Tu registro se ha completado en el sistema.",
+        description: `Bienvenido/a ${targetName}.`,
       });
 
       window.location.href = userRole === 'doctor' ? '/doctor' : '/paciente';
     } catch (err: any) {
       console.error("Error al registrarse:", err);
-      // Fallback
       document.cookie = `user_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
       document.cookie = `session_role=${userRole}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_name=${encodeURIComponent(targetName)}; path=/; max-age=604800; SameSite=Lax`;
+      document.cookie = `user_email=${encodeURIComponent(targetEmail)}; path=/; max-age=604800; SameSite=Lax`;
       window.location.href = userRole === 'doctor' ? '/doctor' : '/paciente';
     } finally {
       setIsLoading(false);
@@ -183,7 +194,7 @@ function LoginFormContent() {
       <Card className="w-full max-w-md shadow-lg border-2">
         <CardHeader className="text-center pb-3">
           <CardTitle className="text-2xl font-headline">Portal de Acceso</CardTitle>
-          <CardDescription>Inicia sesión o regístrate en MediSchedule</CardDescription>
+          <CardDescription>Inicia sesión o crea tu cuenta en MediSchedule</CardDescription>
         </CardHeader>
 
         <CardContent>

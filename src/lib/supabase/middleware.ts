@@ -40,7 +40,6 @@ export async function updateSession(request: NextRequest) {
   const isDashboardRoute = pathname.startsWith('/dashboard');
   const isPatientRoute = pathname.startsWith('/paciente');
   const isDoctorRoute = pathname.startsWith('/doctor');
-  const isLoginRoute = pathname === '/login' || pathname === '/register';
 
   // Si no está autenticado e intenta acceder a una ruta protegida
   if ((isDashboardRoute || isPatientRoute || isDoctorRoute) && !isAuthenticated) {
@@ -50,9 +49,8 @@ export async function updateSession(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  // Si el usuario está autenticado, validar permisos por rol
+  // Si el usuario está autenticado, validar permisos por rol entre dashboards
   if (isAuthenticated) {
-    // Restricciones por rol
     if (isDoctorRoute && userRole !== 'doctor') {
       const url = request.nextUrl.clone();
       url.pathname = '/paciente';
@@ -62,13 +60,6 @@ export async function updateSession(request: NextRequest) {
     if (isPatientRoute && userRole !== 'patient') {
       const url = request.nextUrl.clone();
       url.pathname = '/doctor';
-      return NextResponse.redirect(url);
-    }
-
-    // Si ya está autenticado e intenta ir a login o register
-    if (isLoginRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = userRole === 'doctor' ? '/doctor' : '/paciente';
       return NextResponse.redirect(url);
     }
   }

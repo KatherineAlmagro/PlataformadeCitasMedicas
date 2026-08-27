@@ -57,6 +57,8 @@ function Header({ userName }: { userName?: string }) {
     await supabase.auth.signOut();
     document.cookie = "session_role=; path=/; max-age=0; SameSite=Lax";
     document.cookie = "user_role=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "user_name=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "user_email=; path=/; max-age=0; SameSite=Lax";
     window.location.href = '/login';
   };
 
@@ -69,15 +71,14 @@ function Header({ userName }: { userName?: string }) {
             MediSchedule
           </h1>
         </div>
-        <div className="flex items-center gap-4">
-          {userName && (
-            <div className="hidden sm:flex items-center gap-2 text-sm text-muted-foreground">
-              <UserIcon className="h-4 w-4 text-primary" />
-              <span>Hola, <strong>{userName}</strong></span>
-            </div>
-          )}
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
-            <LogOut className="mr-2 h-4 w-4" />
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 text-xs font-semibold text-primary">
+            <UserIcon className="h-4 w-4 shrink-0" />
+            <span className="font-medium text-foreground">{userName || 'Paciente Registrado'}</span>
+            <span className="bg-primary text-primary-foreground text-[10px] px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">Paciente</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
+            <LogOut className="mr-1.5 h-3.5 w-3.5" />
             Cerrar Sesión
           </Button>
         </div>
@@ -121,15 +122,24 @@ export default function PatientPage() {
     async function loadPatientData() {
       setIsLoading(true);
       try {
-        // 1. Obtener usuario autenticado real
+        // 1. Obtener usuario autenticado real o cookie
         const { data: { user } } = await supabase.auth.getUser();
         let currentUserId = "patient123";
+        let resolvedName = "";
+
+        // Leer cookie auxiliar
+        if (typeof document !== 'undefined') {
+          const matchName = document.cookie.match(/(^| )user_name=([^;]+)/);
+          if (matchName) resolvedName = decodeURIComponent(matchName[2]);
+        }
         
         if (user) {
           currentUserId = user.id;
           setUserId(user.id);
-          setUserName(user.user_metadata?.full_name || user.email?.split('@')[0] || "");
+          resolvedName = user.user_metadata?.full_name || resolvedName || user.email?.split('@')[0] || "Paciente";
         }
+
+        setUserName(resolvedName || "Paciente Registrado");
 
         // 2. Cargar doctores de Supabase
         const { data: doctorsData, error: docError } = await supabase

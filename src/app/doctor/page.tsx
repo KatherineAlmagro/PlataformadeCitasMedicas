@@ -44,13 +44,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { createClient } from '@/lib/supabase/client';
 
-function Header() {
+function Header({ doctorName }: { doctorName?: string }) {
   const supabase = createClient();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     document.cookie = "session_role=; path=/; max-age=0; SameSite=Lax";
     document.cookie = "user_role=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "user_name=; path=/; max-age=0; SameSite=Lax";
+    document.cookie = "user_email=; path=/; max-age=0; SameSite=Lax";
     window.location.href = '/login';
   };
 
@@ -60,13 +62,20 @@ function Header() {
         <div className="flex items-center gap-3">
           <Stethoscope className="h-8 w-8 text-primary" />
           <h1 className="text-2xl font-bold font-headline text-primary tracking-tight">
-            MediSchedule - Portal de Administración
+            MediSchedule - Portal Médico
           </h1>
         </div>
-        <Button variant="ghost" onClick={handleLogout}>
-          <LogOut className="mr-2 h-4 w-4" />
-          Cerrar Sesión
-        </Button>
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 bg-primary/10 px-3 py-1.5 rounded-full border border-primary/20 text-xs font-semibold text-primary">
+            <User className="h-4 w-4 shrink-0" />
+            <span className="font-medium text-foreground">{doctorName || 'Doctor Especialista'}</span>
+            <span className="bg-blue-600 text-white text-[10px] px-1.5 py-0.5 rounded uppercase font-mono tracking-wider">Doctor</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={handleLogout} className="text-xs">
+            <LogOut className="mr-1.5 h-3.5 w-3.5" />
+            Cerrar Sesión
+          </Button>
+        </div>
       </div>
     </header>
   );
@@ -304,9 +313,11 @@ export default function DoctorPage() {
 
   const supabase = createClient();
 
+  const [doctorName, setDoctorName] = useState<string>("Doctor Especialista");
+
   const fetchDoctors = async () => {
     const { data } = await supabase.from('doctors').select('*');
-    if (data && data.length > 0) {
+    if (data) {
       const list: Doctor[] = data.map((d: any) => ({
         id: d.id,
         name: d.name,
@@ -322,6 +333,19 @@ export default function DoctorPage() {
   };
 
   useEffect(() => {
+    async function loadUser() {
+      let resolved = "";
+      if (typeof document !== 'undefined') {
+        const match = document.cookie.match(/(^| )user_name=([^;]+)/);
+        if (match) resolved = decodeURIComponent(match[2]);
+      }
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        resolved = user.user_metadata?.full_name || resolved || user.email?.split('@')[0] || "Doctor";
+      }
+      setDoctorName(resolved || "Doctor Especialista");
+    }
+    loadUser();
     fetchDoctors();
   }, []);
 
@@ -443,7 +467,7 @@ export default function DoctorPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
-      <Header />
+      <Header doctorName={doctorName} />
       <main className="flex-1 container mx-auto p-4 sm:p-6 md:p-8 space-y-8">
         <Card>
           <CardHeader>
