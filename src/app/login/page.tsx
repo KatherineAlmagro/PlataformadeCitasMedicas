@@ -67,6 +67,31 @@ function LoginFormContent() {
       });
 
       if (error) {
+        // Si Supabase requiere confirmación de email pero queremos inicio de sesión libre
+        if (error.message.toLowerCase().includes('email not confirmed')) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('role')
+            .eq('email', email.trim())
+            .single();
+
+          const role = profile?.role || 'patient';
+          document.cookie = `user_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+          document.cookie = `session_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+
+          toast({
+            title: "¡Bienvenido/a!",
+            description: "Has iniciado sesión exitosamente.",
+          });
+
+          if (role === 'doctor') {
+            router.push('/doctor');
+          } else {
+            router.push('/paciente');
+          }
+          router.refresh();
+          return;
+        }
         throw error;
       }
 
